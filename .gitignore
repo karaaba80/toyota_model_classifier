@@ -1,2 +1,3 @@
 # Ignore all .pyc files
 YoloV3/model/*.pyc
+YoloV3/utilities/__pycache__/augmentations.cpython-38.pyc
