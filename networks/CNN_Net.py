@@ -5,12 +5,10 @@ import torchvision
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
-class CustomNet(nn.Module):
+class ResNet(nn.Module):
     def __init__(self, num_classes, model_name="resnet18", adaptive_pool_output=(1, 1), pretrained=True):  # resnet50
-    # def __init__(self, num_classes, in_features_size=256, adaptive_pool_output=(1, 1), pretrained=True):  # resnet18
-    #def __init__(self, num_classes, in_features_size=1024, adaptive_pool_output=(1, 1), pretrained=True): #resnet50
 
-        super(CustomNet, self).__init__()
+        super(ResNet, self).__init__()
 
         in_features_size = 256
         try:
