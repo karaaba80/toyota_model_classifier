@@ -7,43 +7,69 @@ import cv2
 import numpy as np
 import torch
 
-
 sys.path.append(".")
-from networks.CNN_Net import CustomNet
+
 import load_model
 
-from libkaraaba import fileio, common_utils as cu, cv_utils
+def resize_width_cv(img, width=640):
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    """
+    try:
+       imh,imw = img.shape[:2]
+       height =  width * (imh/imw)
+       newres = ( width, int(height) )
+       newimg = cv2.resize(img, newres)
+       return newimg
+    except:
+       print ('exception',img.shape)
+
+def convert_bbox_xywh2xyxy(bbox_xywh):
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    """
+
+    x1, y1, w, h = bbox_xywh #x,y,w,h
+    bbox_xyxy = x1, y1, x1 + w, y1 + h
+    return bbox_xyxy
 
 def pil_grayscale(image_rgb_obj):
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    - converts PIL image to grayscale
+    ----------
+    """
+
     image_gs = ImageOps.grayscale(image_rgb_obj)
     rgbimg = Image.merge("RGB", (image_gs, image_gs, image_gs))
     return rgbimg
 
-def yolo_crop_file_standalone(img_path, min_wh2image_ratio=0.2):
-    original_dir = os.getcwd()
-    lib_path = "/home/karaaba/workspace/YOLOv4-Pytorch/"
-    os.chdir(lib_path)
-    sys.path.insert(0, lib_path)
-
-    cfg = "./configs/yolov3.cfg"
-    class_names = "./configs/coco.names"
-    weights = "./weights/yolov3.weights"
-    # from utilities.constants import *
-    from utilities.constants import NO_BENCHMARK, SEPARATOR
-
-    # from utilities.arguments import parse_detect_args
-    from utilities.configs import parse_config, parse_names
-    from utilities.weights import load_weights
-
-    from utilities.devices import gpu_device_name, get_device, use_cuda
-    from utilities.images import load_image, get_bboxes_xywh_with_class_filters
-    from utilities.inferencing import inference_on_image, inference_video_to_video
-
+def yolo_detect_bbox(img_path, min_wh2image_ratio=0.2, min_obj_conf=0.9):
     """
     ----------
-    Author: Damon Gwinn (gwinndr)
-
+    Author: M. Faik Karaaba (karaaba80), modified from Damon Gwin
+    ----------
+    - bbox detector using Yolo
+    ----------
     """
+    sys.path.insert(0, "YoloV3")
+
+    from YoloV3.utilities.configs import parse_config, parse_names #Author: Damon Gwinn (gwinndr)
+    from YoloV3.utilities.weights import load_weights #Author: Damon Gwinn (gwinndr)
+
+    from YoloV3.utilities.devices import gpu_device_name, get_device, use_cuda #Author: Damon Gwinn (gwinndr)
+    from YoloV3.utilities.images import load_image, get_bboxes_xywh_with_class_filters #Author: Damon Gwinn (gwinndr)
+    from YoloV3.utilities.inferencing import inference_on_image, inference_video_to_video #Author: Damon Gwinn (gwinndr)
+
+    cfg = "./YoloV3/configs/yolov3.cfg"
+    class_names = "./YoloV3/configs/coco.names"
+    weights = "./YoloV3/weights/yolov3.weights"
 
     # no_grad disables autograd so our model runs faster
     with torch.no_grad():
@@ -63,7 +89,7 @@ def yolo_crop_file_standalone(img_path, min_wh2image_ratio=0.2):
         network_dim = model.net_block.width
 
         # Letterboxing
-        letterbox = True
+        letterbox = True #preserve the aspect ratio
 
         print("Parsing class names...")
         class_names = parse_names(class_names)
@@ -74,105 +100,65 @@ def yolo_crop_file_standalone(img_path, min_wh2image_ratio=0.2):
         load_weights(model, weights)
 
         image = load_image(img_path)
-        im_h,im_w = image.shape[:2]
         if (image is None):
             return
+        im_h, im_w = image.shape[:2]
+        detections = inference_on_image(model, image, network_dim, obj_thresh=min_obj_conf,
+                                        letterbox=letterbox)
 
-        detections = inference_on_image(model, image, network_dim, obj_thresh=0.9, letterbox=letterbox)
+        bboxess_probs = get_bboxes_xywh_with_class_filters(detections, class_names, class_filters=["car"]) #we want only "car" objects
 
-        print("detections,", len(detections))
-        bboxess_probs = get_bboxes_xywh_with_class_filters(detections, class_names,
-                                                           class_filters=["car"])
-        # output_image = draw_detections(detections, image, class_names, verbose_output=True,
-        #                                class_filters="car")
+        print(bboxess_probs)
 
-        # cv2.imwrite(args.output, output_image)
+    min_w = min_wh2image_ratio * im_w  # minimum w of the bbox
+    min_h = min_wh2image_ratio * im_h  # minimum h of the bbox
 
-        # cv2.imshow("Detections", output_image)
-        # cv2.waitKey(0)
-
-    os.chdir(original_dir)
-
-    min_w = min_wh2image_ratio * im_w #minimum w and h of the bbox
-    min_h = min_wh2image_ratio * im_h  # minimum w and h of the bbox
-    print("min_w,min_h", min_w, min_h)
-    bboxess_probs = [(bbox,probability) for bbox,probability in bboxess_probs if probability>0.9]
-    bboxess_probs = [((x,y,w,h), probability) for (x,y,w,h), probability in bboxess_probs if w>=min_w and h>min_h]
+    bboxess_probs = [((x, y, w, h), probability) for (x, y, w, h), probability in bboxess_probs if
+                     w >= min_w and h > min_h]
 
     return bboxess_probs
 
-# def load_model(*, model_path, model_params):
-#     properties = {}
-#     for parameter in model_params:
-#         if parameter.startswith("classes"):
-#             properties["classes"] = parameter.split(':')[1].strip().split(',')
-#         elif parameter.startswith("number of classes"):
-#             properties["number of classes"] = int(parameter.split(':')[1].strip())
-#         elif parameter.startswith("adaptive pool output"):
-#             properties["adaptive pool output"] = tuple(map(int, parameter.split(':')[1].strip().split(",")))
-#         elif parameter.startswith("resolution"):
-#             properties["resolution"] = parameter.split(':')[1].strip()
-#
-#     adp_pool = properties["adaptive pool output"]
-#     num_classes = properties["number of classes"]
-#     classes = properties["classes"]
-#     w, h = list(map(int, properties["resolution"].split("x")))
-#
-#     try:
-#         model_name = properties["model name"]
-#         print("model name:", properties["model name"])
-#     except:
-#         print("model name:", "resnet18")
-#         model_name = "resnet18"
-#
-#     mymodel = CustomNet(num_classes=num_classes, adaptive_pool_output=adp_pool, model_name=model_name)
-#     # mymodel.load_state_dict(torch.load(model_path))
-#
-#     from torch import nn, optim
-#     try:
-#         checkpoint = torch.load(model_path)
-#         mymodel.load_state_dict(checkpoint['model_state_dict'])
-#
-#         optimizer = optim.Adam(mymodel.parameters(), lr=0.0)
-#         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-#
-#         print("checkpoint")
-#     except:
-#         mymodel.load_state_dict(torch.load(model_path))
-#         print("exception: classic")
-#
-#     mymodel.eval()
-#     torch.no_grad()
-#
-#     return mymodel,(w, h),classes
+
 
 def put_text_top(image, text, point, color=(100, 0, 100), scale=0.5):
-    # h,w = image.shape[:2]
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    """
     cv2.putText(image, org=point,
            text=text, fontScale=scale,
            fontFace=cv2.FONT_HERSHEY_SIMPLEX, color=color)
 
 def show_prediction_result_2models(*, file_path, img_obj, classes, model1, model2, resolution1, resolution2, bboxes_probs, resize_w=300):
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    """
     w1, h1 = resolution1
     w2, h2 = resolution2
 
     img = np.array(img_obj)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
+    min_prob_thrs = 0.75
     if len(bboxes_probs) > 0:
        (xx, yy, ww, hh), conf_detection = bboxes_probs[0]
-       x1, y1, x2, y2 = cv_utils.convert_bbox_xywh2xyxy((xx, yy, ww, hh))
+       x1, y1, x2, y2 = convert_bbox_xywh2xyxy((xx, yy, ww, hh))
        cv2.rectangle(img, (x1, y1), (x2, y2), color=(0, 0, 250), thickness=3)
 
        img_obj_crop = img_obj.crop((x1, y1, x2, y2))
        return_info1 = predict_image(img_obj_crop, file_path, model1, res=(w1, h1),
-                               labels=classes, min_prob_threshold=0.75, target_label="", print_info=True)
+                               labels=classes, min_prob_threshold=min_prob_thrs,
+                               target_label="", print_info=True)
        predicted_numpy1, label1, conf_class1, score1 = return_info1
 
        return_info2 = predict_image(img_obj_crop, file_path, model2, res=(w2, h2),
-                                    labels=classes, min_prob_threshold=0.75, target_label="", print_info=True)
+                                    labels=classes, min_prob_threshold=min_prob_thrs,
+                                    target_label="", print_info=True)
+
        predicted_numpy2, label2, conf_class2, score2 = return_info2
-       img = cv_utils.resize_width(img, resize_w)
+       img = resize_width_cv(img, resize_w)
        new_img = pad_image(img, W_offset_right=80)
        # H,W = img.shape[:2]
        font_scale = 0.4
@@ -186,6 +172,11 @@ def show_prediction_result_2models(*, file_path, img_obj, classes, model1, model
        cv2.imshow(os.path.basename(file_path), new_img)
 
 def pad_image(img_cv, W_offset_right=65):
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    """
     H,W = img_cv.shape[:2]
     new_shape = (H, W+W_offset_right, 3)
 
@@ -194,9 +185,15 @@ def pad_image(img_cv, W_offset_right=65):
 
     return new_img
 
-
-
 def show_prediction_result(*, file_path, img_obj, classes, model, model_name, resolution, bboxes_probs, resize_w=300):
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    - bbox detector using Yolo
+    ----------
+    """
+
     w,h = resolution
 
     img = np.array(img_obj)
@@ -204,7 +201,7 @@ def show_prediction_result(*, file_path, img_obj, classes, model, model_name, re
 
     if len(bboxes_probs) > 0:
        (xx, yy, ww, hh), conf_detect = bboxes_probs[0]
-       x1, y1, x2, y2 = cv_utils.convert_bbox_xywh2xyxy((xx, yy, ww, hh))
+       x1, y1, x2, y2 = convert_bbox_xywh2xyxy((xx, yy, ww, hh))
 
        img_obj_crop = img_obj.crop((x1, y1, x2, y2))
        return_val = predict_image(img_obj_crop, file_path, model, res=(w, h),
@@ -213,7 +210,7 @@ def show_prediction_result(*, file_path, img_obj, classes, model, model_name, re
        predicted_numpy, label, conf_class, score = return_val
        cv2.rectangle(img, (x1, y1), (x2, y2), color=(0, 0, 250), thickness=3)
 
-       img = cv_utils.resize_width(img, resize_w)
+       img = resize_width_cv(img, resize_w)
        H,W = img.shape[:2]
        new_shape = (H, W+65, 3)
        # diff = H - W
@@ -230,9 +227,14 @@ def show_prediction_result(*, file_path, img_obj, classes, model, model_name, re
                                    labels=classes, min_prob_threshold=0.75, target_label="", print_info=True)
 
        predicted_numpy, label, conf_class, score = return_val
-       cv2.imshow(label+" p" + str(round(conf_class, 2))+" m "+model_name, cv_utils.resize_width(img, resize_w))
+       cv2.imshow(label+" p" + str(round(conf_class, 2))+" m "+model_name, resize_width_cv(img, resize_w))
 
 def main_detect_and_classify_2models():
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    """
     parser = argparse.ArgumentParser(description='Test ResNet-18 on custom dataset',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--image', type=str, required=True, help='Path to the testing data directory')
@@ -253,7 +255,8 @@ def main_detect_and_classify_2models():
     print("w h", w1,h1)
     print("w2 h2", w2, h2)
 
-    bboxes_probs = yolo_crop_file_standalone(img_path=args.image, min_wh2image_ratio=0.2)
+    bboxes_probs = yolo_detect_bbox(img_path=args.image, min_wh2image_ratio=0.2)  # emplying yolo to detect the car and crop
+    # bboxes_probs = yolo_crop_file_standalone(img_path=args.image, min_wh2image_ratio=0.2)
 
     img_obj = Image.open(args.image)
 
@@ -282,77 +285,48 @@ def main_detect_and_classify_2models():
 
 
 def main_detect_and_classify():
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    """
     parser = argparse.ArgumentParser(description='Test ResNet-18 on custom dataset',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--image', type=str, required=True, help='Path to the testing data directory')
     parser.add_argument('--model-path', type=str, required=True, help='path of the model')
     parser.add_argument('-pred-type', '--prediction-type', default="classification", type=str, help='path to the model')
-    # parser.add_argument('--the-class', dest="label", default="", type=str, help='class name if there is only one class')
     parser.add_argument('--preprocess', type=str, default="None", help='preprocess options: Example Flip,GS')
 
     args = parser.parse_args()
 
-    model_params = open(args.model_path[:-4] + ".txt").readlines()
+    model_params = open(args.model_path[:-4] + ".txt").readlines() #same name with model but has txt end
 
-    bboxes_probs = yolo_crop_file_standalone(img_path=args.image, min_wh2image_ratio=0.2)
-
-
-    mymodel,(w,h),classes = load_model.load_model(model_path=args.model_path, model_params=model_params)
+    bboxes_probs =  yolo_detect_bbox(img_path=args.image, min_wh2image_ratio=0.2) #emplying yolo to detect the car and crop
+    mymodel,(w,h),classes = load_model.load_model_weights(model_path=args.model_path, model_params=model_params)
 
     img_obj = Image.open(args.image)
 
-    show_prediction_result(file_path=args.image, img_obj=img_obj, classes=classes, resolution=(w,h), model_name="", model=mymodel,
-                           preprocess=args.preprocess,
-                           bboxes_probs=bboxes_probs, resize_w=600)
+    if not args.preprocess is None:
+        if "Flip".lower() in args.preprocess.lower():
+            img_obj = img_obj.transpose(Image.FLIP_LEFT_RIGHT)
+
+        if "GS".lower() in args.preprocess.lower():
+            img_obj = pil_grayscale(img_obj)
+
+    show_prediction_result(file_path=args.image, img_obj=img_obj, classes=classes, resolution=(w,h),
+                           model_name="", model=mymodel, bboxes_probs=bboxes_probs, resize_w=600)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-
-def main_detect_and_classify_():
-    parser = argparse.ArgumentParser(description='Test ResNet-18 on custom dataset',
-                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--image', type=str, required=True, help='Path to the testing data directory')
-    parser.add_argument('--model-path', type=str, required=True, help='path of the model')
-    parser.add_argument('-pred-type', '--prediction-type', default="classification", type=str, help='path to the model')
-    # parser.add_argument('--the-class', dest="label", default="", type=str, help='class name if there is only one class')
-    parser.add_argument('--preprocess', type=str, default="None", help='preprocess options: Example Flip,GS')
-
-    args = parser.parse_args()
-
-    model_params = open(args.model_path[:-4] + ".txt").readlines()
-
-
-
-    bboxes_probs = yolo_crop_file_standalone(img_path=args.image, min_wh2image_ratio=0.2)
-
-    # adp_pool = properties["adaptive pool output"]
-    # num_classes = properties["number of classes"]
-    # classes = properties["classes"]
-    # w, h = list(map(int, properties["resolution"].split("x")))
-
-    # mymodel = CustomNet(num_classes=num_classes, adaptive_pool_output=adp_pool)
-    # mymodel.load_state_dict(torch.load(args.model_path))
-    # mymodel.eval()
-    # torch.no_grad()
-
-    mymodel,(w,h),classes = load_model(model_path=args.model_path, model_params=model_params)
-
-    img_obj = Image.open(args.image)
-
-    show_prediction_result(file_path=args.image, img_obj=img_obj, classes=classes, resolution=(w,h), model_name="", model=mymodel,
-                           preprocess=args.preprocess,
-                           bboxes_probs=bboxes_probs, resize_w=600)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
-# def classify_image_wrap()
 
 def predict_image(image_obj, img_filename, model, labels=("acura", "alpha romeo"),
-                  target_label="acura", res=(128, 128),
-                  min_prob_threshold=0.75, print_info=False):
+                  target_label="acura", res=(128, 128),  min_prob_threshold=0.75, print_info=False):
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    """
     import torchvision.transforms.functional as TF
-    import torch.nn.functional as F
-    # print("labels",labels)
     import torchvision
     from scipy.special import softmax
 

@@ -2,27 +2,31 @@ import argparse
 import os
 import sys
 
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, f1_score
 from sklearn.preprocessing import LabelEncoder
+
 
 from PIL import Image, ImageOps
 import cv2
 import numpy as np
 import torch
-
-
-
 import pandas as pd
 
 sys.path.append(".")
-from networks.CNN_Net import CustomNet
-from networks.TransformersNet import TransformerVIT
+# from networks.CNN_Net import CustomNet
+# from networks.TransformersNet import TransformerVIT
 import load_model
 
-from libkaraaba import fileio, common_utils as cu
+# from libkaraaba import fileio, common_utils as cu
 
 
 def get_class_counts(class_names,all_labels):
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    """
+
     class_counts = dict(zip(np.unique(all_labels), np.bincount(all_labels)))
     uniques = np.unique(all_labels)
     class_name_dict = {}
@@ -35,6 +39,12 @@ def get_class_counts(class_names,all_labels):
 
 
 def print_confusion_matrix(y_pred_labels, y_true_labels, classes):
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    """
+
     label_encoder = LabelEncoder()
 
     label_encoder.fit(classes)
@@ -67,14 +77,24 @@ def print_confusion_matrix(y_pred_labels, y_true_labels, classes):
     # Print the average accuracy
     print(f"\nAverage Accuracy (accounting for class imbalance): {average_accuracy:.1f}%")
 
+    f1_macro_score = f1_score(y_true=y_true_labels, y_pred=y_pred_labels, average='macro')
+    f1_weighted_score = f1_score(y_true=y_true_labels, y_pred=y_pred_labels, average='weighted')
+
+    print("f1 macro_score", str(round(100*f1_macro_score,1))+"%")
+    print("f1 weighted_score", str(round(100*f1_weighted_score,1))+"%")
 
 
 def get_predictions(*, model, input_data, img_resolution, classes, info=False, conf_thrs=-1.0):
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    """
+
     file_paths,image_obj_list,target_labels = input_data
     w,h = img_resolution
-    results = [predict_image(img_obj, img_filename=img_file_name, model=model,
-                             res=(w, h), target_label=real_label,
-                             labels=classes, min_prob_threshold=conf_thrs,
+    results = [predict_image(img_obj, img_filename=img_file_name, model=model, res=(w, h),
+                             target_label=real_label, labels=classes, min_prob_threshold=conf_thrs,
                              print_info=info)
                for img_file_name, img_obj, real_label in zip(file_paths, image_obj_list, target_labels)]
 
@@ -85,8 +105,7 @@ def get_predictions(*, model, input_data, img_resolution, classes, info=False, c
     results_targets = [(label, conf, score, os.path.basename(img_file), real_label) for
                        (label, conf, score, img_file, real_label) in
                        zip(labels, confidences, judgements, file_paths, target_labels) if not score is None]
-    correct_number = len(
-        [(l, c, s, filename) for (l, c, s, filename, real_label) in results_targets if l == real_label])
+    correct_number = len([(l, c, s, filename) for (l, c, s, filename, real_label) in results_targets if l == real_label])
 
     print("len labels", len(results_targets), "correct:", correct_number)
     acc = correct_number / len(results_targets)
@@ -98,9 +117,15 @@ def get_predictions(*, model, input_data, img_resolution, classes, info=False, c
     return pred_labels,true_labels
 
 def prepare_csv_data(csv_file_path, preprocess=""):
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    """
+
     csv_data = pd.read_csv(csv_file_path)
-    file_paths = [path for path in csv_data["file_path"]]
-    real_labels = [label for label in csv_data["label"]]
+    file_paths = csv_data["file_path"]
+    real_labels = csv_data["label"]
     image_obj_list = [Image.open(f) for f in file_paths]
 
     if "Flip".lower() in preprocess.lower():
@@ -110,8 +135,15 @@ def prepare_csv_data(csv_file_path, preprocess=""):
 
     return file_paths,image_obj_list,real_labels
 
+
 def main_csv_multi_model():
-    parser = argparse.ArgumentParser(description='Test ResNet-18 on custom dataset',
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    """
+
+    parser = argparse.ArgumentParser(description='Test multiple models on csv dataset',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('test_csv', type=str, help='Path to the testing data directory')
     parser.add_argument('--model-path-list', type=str, nargs='+', required=True, help='path of the model')
@@ -121,31 +153,33 @@ def main_csv_multi_model():
                         help='confidence threshold, -1 means no threshold')
     parser.add_argument('--print-info', action='store_true', help='path of the model')
     args = parser.parse_args()
-    print("aaaaa")
-    model_paths = args.model_path_list
 
-    if args.conf_thrs == -1:
-        args.conf_thrs = None
+    file_paths, image_obj_list, real_labels = prepare_csv_data(args.test_csv)
 
-    for model_path in model_paths:
+    for model_path in args.model_path_list:
         print("model:", os.path.basename(model_path))
         model_params = open(model_path[:-4] + ".txt").readlines()
 
-        model, (w, h), classes = load_model.load_model_cnn(model_path=model_path, model_params=model_params)
-        break
-        file_paths, image_obj_list, real_labels = prepare_csv_data(args.test_csv)
+        model, (w, h), classes = load_model.load_model_weights(model_path=model_path, model_params=model_params)
 
 
         pred_labels, true_labels = get_predictions(model=model, input_data=(file_paths, image_obj_list, real_labels),
-                                                   img_resolution=(w, h), classes=classes, conf_thrs=args.conf_thrs)
+                                                   img_resolution=(w, h), classes=classes,
+                                                   conf_thrs=args.conf_thrs, info=args.print_info)
         print_confusion_matrix(y_pred_labels=pred_labels, y_true_labels=true_labels, classes=classes)
         print("\n\n")
 
 
 
-
 def main_csv():
-    parser = argparse.ArgumentParser(description='Test ResNet-18 on custom dataset',
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    test model on csv dataset file
+    """
+
+    parser = argparse.ArgumentParser(description='Test a model on csv dataset',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('test_csv', type=str, help='Path to the testing data directory')
     parser.add_argument('--model-path', type=str, required=True, help='path of the model')
@@ -157,14 +191,9 @@ def main_csv():
     args = parser.parse_args()
 
     model_params = open(args.model_path[:-4] + ".txt").readlines()
-    # model,(w, h),classes = load_model.load_model_cnn(model_path=args.model_path, model_params=model_params)
-    # model, (w, h), classes = load_model.load_model_transformer(model_path=args.model_path, model_params=model_params)
     model, (w, h), classes = load_model.load_model_weights(model_path=args.model_path, model_params=model_params)
 
     file_paths,image_obj_list,real_labels = prepare_csv_data(args.test_csv)
-
-    if args.conf_thrs==-1:
-       args.conf_thrs=None
 
     pred_labels,true_labels = get_predictions(model=model, input_data=(file_paths,image_obj_list,real_labels),
                                               img_resolution=(w,h), classes=classes,  conf_thrs=args.conf_thrs)
@@ -174,25 +203,36 @@ def main_csv():
 
 
 def crawl_directory(main_folder, filters=(".jpg",".png")):
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    Simple crawler using os.walk, it reaches everywhere from top to the bottom of file
+    """
+
     import os
     file_paths = []
 
     # Walk through the directory and collect all file paths
     for root, dirs, files in os.walk(main_folder):
         for file in files:
-          for filter in filters:
-            if file.endswith((filter)):
+          for file_suffix in filters:
+            if file.endswith(file_suffix):
               file_path = os.path.join(root, file)
               file_paths.append(file_path)
               break
-            # if file.endswith((filter)):  # Adjust extensions as needed
-            #     file_path = os.path.join(root, file)
-
 
     return file_paths
 
 def main_dir():
-    parser = argparse.ArgumentParser(description='Test ResNet-18 on custom dataset',
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    this script accepts 1 level directory for testing
+    """
+
+    parser = argparse.ArgumentParser(description='test a model on the directory',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--test-dir', type=str, required=True, help='Path to the testing data directory')
     parser.add_argument('--model-path', type=str, required=True, help='path of the model')
@@ -204,56 +244,24 @@ def main_dir():
     args = parser.parse_args()
 
     model_params = open(args.model_path[:-4] + ".txt").readlines()
-    properties = {}
+    model, (img_width, img_height), classes = load_model.load_model_weights(model_path=args.model_path, model_params=model_params)
 
-    for parameter in model_params:
-        if parameter.startswith("classes"):
-           properties["classes"] = parameter.split(':')[1].strip().split(',')
-        elif parameter.startswith("number of classes"):
-           properties["number of classes"] = int(parameter.split(':')[1].strip())
-        elif parameter.startswith("adaptive pool output"):
-            properties["adaptive pool output"] = tuple(map(int, parameter.split(':')[1].strip().split(",")))
-        elif parameter.startswith("resolution"):
-            properties["resolution"] = parameter.split(':')[1].strip()
+    model.load_state_dict(torch.load(args.model_path))
 
-    print(properties)
-    adp_pool = properties["adaptive pool output"]
-    num_classes = properties["number of classes"]
-    classes = properties["classes"]
-    w, h = list(map(int, properties["resolution"].split("x")))
-    # weight, height = list(map(int, args.res.split("x")))
-    print("w,h", w, h)
-
-    mymodel = CustomNet(num_classes=num_classes, adaptive_pool_output=adp_pool)
-
-    # mymodel.load_state_dict(torch.load(args.model_path))
-    try:
-        checkpoint = torch.load(args.model_path)
-        mymodel.load_state_dict(checkpoint['model_state_dict'])
-    except:
-        mymodel.load_state_dict(torch.load(args.model_path))
-
-    mymodel.eval()
+    model.eval()
     torch.no_grad()
 
-    # files = fileio.getAllFilePaths(args.test_dir)
-    files = crawl_directory(args.test_dir, filters=(".png",".jpeg", ".jpg"))
+    files = crawl_directory(args.test_dir, filters=(".png", ".jpeg", ".jpg"))
     files = [f for f in files if f.endswith(".png") or f.endswith(".jpg") or f.endswith(".jpeg")]
-    cu.print_list(files, expl="files")
-    # exit()
+
     image_obj_list = [Image.open(f) for f in files]
     if "Flip".lower() in args.preprocess.lower():
        image_obj_list = [img_obj.transpose(Image.FLIP_LEFT_RIGHT) for img_obj in image_obj_list]
     if "GS".lower() in args.preprocess.lower():
        image_obj_list = [pil_grayscale(img_obj) for img_obj in image_obj_list]
 
-    # min_thrs = 0.75
-    # min_thrs = None
-    if args.conf_thrs==-1:
-       args.conf_thrs=None
-
-    results = [predict_image(img_obj, img_filename=img_file_name, model=mymodel,
-                             res=(w, h), target_label=args.label,
+    results = [predict_image(img_obj, img_filename=img_file_name, model=model,
+                             res=(img_width, img_height), target_label=args.label,
                              labels=classes, min_prob_threshold=args.conf_thrs,
                              print_info=True)
                for img_file_name,img_obj in zip(files, image_obj_list)]
@@ -262,25 +270,16 @@ def main_dir():
     judgements = [r[3] for r in results]
     labels = [r[1] for r in results]
 
-
     results = [(label,conf,score,os.path.basename(img_file)) for (label,conf,score,img_file) in
                 zip(labels,confidences,judgements,files) if not score is None]
 
-
     results.sort(key=lambda X:X[2])
-    cu.print_list(results)
-    # print("labels", labels)
+
     if not args.label == "":
-       correct_number = len([(l,c,s,filename) for (l,c,s,filename) in results if l == args.label and (s is not None)])
+       correct_number = len([(l,c,score,filename) for (l,c,score,filename) in results if l == args.label and (score is not None)])
        print("len labels", len(results), "correct:", correct_number)
        acc = correct_number / len(results)
        print("accuracy %"+str(acc*100))
-
-    # if not args.label == "":
-    #    correct_number =  len([l for l in labels if l==args.label])
-    #    print("len labels", len(labels), "correct:", correct_number)
-    #    acc = correct_number/len(labels)
-    #    print("accuracy %"+str(acc*100))
 
 def pil_grayscale(image_rgb_obj):
     image_gs = ImageOps.grayscale(image_rgb_obj)
@@ -289,7 +288,13 @@ def pil_grayscale(image_rgb_obj):
 
 
 def main_single_image():
-    parser = argparse.ArgumentParser(description='Train ResNet-18 on custom dataset')
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    this script accepts only an image path for testing
+    """
+    parser = argparse.ArgumentParser(description='single image test')
     parser.add_argument('--img', type=str, required=True, help='path to the image file')
     parser.add_argument('--model-path', type=str, required=True, help='path to the model')
     parser.add_argument("--res", default="128x128",
@@ -297,7 +302,6 @@ def main_single_image():
     parser.add_argument('--preprocess', type=str, default="None", help='preprocess options: Example Flip,GS')
 
     parser.add_argument('-pred-type', '--prediction-type', default="classification", type=str, help='path to the model')
-
 
     args = parser.parse_args()
 
@@ -308,11 +312,9 @@ def main_single_image():
 
     print(properties)
 
-
     model, (w, h), classes = load_model.load_model_weights(model_path=args.model_path, model_params=model_params)
 
     img = cv2.imread(args.img, 1)
-
 
     if "regress" in args.prediction_type:
        output = predict_regress(args.img, model, res=(w, h))
@@ -389,62 +391,13 @@ def main_single_image():
 
     cv2.waitKey(0)
 
-def predict_image_filepath(filepath, model, labels=("acura", "alpha romeo"), res=(128,128), min_prob_threshold=0.75):
-    import torchvision.transforms.functional as TF
-    import torch.nn.functional as F
 
-    import torchvision
-    from scipy.special import softmax
-
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print("device is", device)
-    normalizer = torchvision.transforms.Normalize(mean=0.5, std=0.5)
-    image = Image.open(filepath)
-
-    if image.mode == 'RGBA':
-        image = image.convert('RGB')
-
-    model.to(device=device)
-    image = image.resize(res)
-    data = TF.to_tensor(image)
-    data = normalizer(data)
-    data.unsqueeze_(0)
-    data = data.to(device)
-    output = model(data)
-    print("output", output.cpu().detach().numpy()[0])
-    _, predicted = torch.max(output.data, 1)
-    predicted_numpy = predicted.cpu().detach().numpy()
-
-    # clamped_outputs = output.clamp(0, 1)
-
-    raw_output = output.cpu().detach().numpy()
-    # min_val = np.min(raw_output)
-    # max_val = np.max(raw_output)
-    # raw_output_norm = (raw_output - min_val)/max_val
-
-    # probabilities = F.softmax(output, dim=0)
-    probabilities = np.round(softmax(raw_output), 2)
-    confidence_value = np.max(probabilities)
-    # print("probs:::",probabilities)
-    # from sklearn import
-    # raw_output_norm = clamped_outputs.cpu().detach().numpy()
-    # print("raw output", raw_output, "pred:", predicted_numpy, labels[predicted])
-    final_predicted_value = labels[predicted]
-    if min_prob_threshold > confidence_value:
-        final_predicted_value = "unsure"
-        pass
-    else:
-        print(os.path.basename(filepath), end=" ")
-        print("prob", probabilities, "confidence:", confidence_value, "pred:", predicted_numpy, final_predicted_value)
-    return predicted_numpy, labels[predicted], confidence_value  # this part is used for the single main
 
 def predict_image(image_obj, img_filename, model, labels,
                   target_label="acura", res=(128, 128),
                   min_prob_threshold=0.75, print_info=False):
 
     import torchvision.transforms.functional as TF
-    import torch.nn.functional as F
-    # print("labels",labels)
     import torchvision
     from scipy.special import softmax
 
@@ -458,26 +411,25 @@ def predict_image(image_obj, img_filename, model, labels,
 
     model.to(device=device)
     image = image.resize(res)
-    data = TF.to_tensor(image)
-    data = normalizer(data)
-    data.unsqueeze_(0)
+
+    #manual torch pipeline
+    data = TF.to_tensor(image) #PIL to tensor
+    data = normalizer(data) #normalize for NN
+    data.unsqueeze_(0) #shape change
     data = data.to(device)
+
     output = model(data)
-    # print("output", output.cpu().detach().numpy()[0])
     _, predicted = torch.max(output.data, 1)
     predicted_numpy = predicted.cpu().detach().numpy()
-
-    # clamped_outputs = output.clamp(0, 1)
 
     raw_output = output.cpu().detach().numpy()
 
     probabilities = np.round(softmax(raw_output),2)
     confidence_value = np.max(probabilities)
-
     final_predicted_value = labels[predicted]
     score = None
 
-    if min_prob_threshold == None:
+    if min_prob_threshold == -1:
        if print_info:
            print ("prob",probabilities,"confidence:",confidence_value, "pred:",predicted_numpy,"real pred val",
                final_predicted_value, "Target:", target_label,  os.path.basename(img_filename))
@@ -490,12 +442,10 @@ def predict_image(image_obj, img_filename, model, labels,
               print("prob", probabilities, "conf:", confidence_value, "pred:", predicted_numpy,"real pred val",
                  final_predicted_value, "Target:", target_label,  os.path.basename(img_filename))
         else:
-            # print(os.path.basename(filepath), end=" ")
-            if print_info:
+           if print_info:
                print ("prob",probabilities,"confidence:",confidence_value, "pred:",predicted_numpy,"real pred val",
                    final_predicted_value, "Target:", target_label,  os.path.basename(img_filename))
-            score = True if final_predicted_value==target_label else False
-
+           score = True if final_predicted_value==target_label else False
 
     return predicted_numpy,labels[predicted],confidence_value,score   #this part is used for the single main
 
@@ -547,4 +497,5 @@ if __name__ == '__main__':
     elif sys.argv[1] == commands[3]:
        sys.argv = commandArgs
        main_csv_multi_model()
+
 
