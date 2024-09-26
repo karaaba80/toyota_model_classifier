@@ -1,15 +1,16 @@
 import argparse
 import os
 import sys
-
+import torch
 from PIL import Image, ImageOps
 import cv2
 import numpy as np
-import torch
+
 
 sys.path.append(".")
 
 import load_model
+import main_utils
 
 def resize_width_cv(img, width=640):
     """
@@ -139,8 +140,9 @@ def show_prediction_result_2models(*, file_path, img_obj, classes, model1, model
     w1, h1 = resolution1
     w2, h2 = resolution2
 
-    img = np.array(img_obj)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # img = np.array(img_obj)
+    # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = main_utils.pil2cv2(img_obj)
     min_prob_thrs = 0.75
     if len(bboxes_probs) > 0:
        (xx, yy, ww, hh), conf_detection = bboxes_probs[0]
