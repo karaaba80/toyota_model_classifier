@@ -30,7 +30,7 @@ def load_model_parameters(model_params):
 
     return properties
 
-def load_model_weights(*, model_path, model_params):
+def load_model_weights(*, model_path, model_params, device):
     """
     ----------
     Author: M. Faik Karaaba (karaaba80)
@@ -60,7 +60,7 @@ def load_model_weights(*, model_path, model_params):
        num_classes = properties["number of classes"]
        mymodel = TransformerVIT(num_classes=num_classes)
 
-    mymodel.load_state_dict(torch.load(model_path))
+    mymodel.load_state_dict(torch.load(model_path,map_location=device))
 
     mymodel.eval()
     torch.no_grad()

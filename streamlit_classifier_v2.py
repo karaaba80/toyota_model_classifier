@@ -54,10 +54,11 @@ def load_model_local():
     model_path = "classifier_weights/Transformer_Latest.pth"
     model_params = open(model_path[:-4] + ".txt").readlines()
     model, (img_width, img_height), classes = load_model.load_model_weights(model_path=model_path,
-                                                                            model_params=model_params)
-    model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
-    model.eval() #necessary to disable any drop out units and further
-    torch.no_grad()
+                                                                            model_params=model_params,
+                                                                            device=torch.device('cpu'))
+    # model.load_state_dict(torch.load(model_path, map_location=))
+    # model.eval() #necessary to disable any drop out units and further
+    # torch.no_grad()
 
     resolution = img_width, img_height
 
