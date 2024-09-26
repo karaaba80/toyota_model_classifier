@@ -1,5 +1,5 @@
 numpy==1.24.4
-opencv-python==4.5.2.52
+opencv-python
 Pillow
 streamlit
 torch==2.3.1
