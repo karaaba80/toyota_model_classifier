@@ -87,13 +87,13 @@ def load_yolo_once():
 
 
 
-    cfg = "./YoloV3/configs/yolov3.cfg"
-    class_names = "./YoloV3/configs/coco.names"
-    weights = "./YoloV3/weights/yolov3.weights"
+    cfg = "YoloV3/configs/yolov3.cfg"
+    class_names = "YoloV3/configs/coco.names"
+    weights = "YoloV3/weights/yolov3.weights"
 
     # no_grad disables autograd so our model runs faster
     with torch.no_grad():
-        print("YOLO Parsing config into model...")
+        # print("YOLO Parsing config into model...")
         yolo_model = parse_config(cfg)
         if (yolo_model is None):
             return
