@@ -2,7 +2,7 @@ numpy
 opencv-python-headless
 Pillow
 streamlit
-torch
-torchvision
+torch==2.3.1
+torchvision==0.18.1
 scipy
 timm
