@@ -12,14 +12,9 @@ import load_model
 import detect_with_yolo
 import main_utils
 
-sys.path.insert(0, "YoloV3")
-
-from YoloV3.utilities.configs import parse_config, parse_names  # Author: Damon Gwinn (gwinndr)
-from YoloV3.utilities.weights import load_weights  # Author: Damon Gwinn (gwinndr)
-
-from YoloV3.utilities.devices import gpu_device_name, get_device, use_cuda  # Author: Damon Gwinn (gwinndr)
-from YoloV3.utilities.images import load_image, get_bboxes_xywh_with_class_filters  # Author: Damon Gwinn (gwinndr)
-from YoloV3.utilities.inferencing import inference_on_image
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+#
+# device = torch.device('cpu')
 
 def create_thumbnails_(example_images):
     for example_name, image_path in example_images.items():
@@ -49,13 +44,23 @@ def create_thumbnails_and_get_selected_image(example_images):
     # print("create_thumbnails")
     return selected_img_obj,image_caption
 
+# def load_model_from_dropbox():
+#     url = "https://www.dropbox.com/scl/fi/281azcc5l4pujqbscdrjv/Transformer_Latest.pth?rlkey=it6dky430w8tp9p1sl626e7js&st=o47j2itl&dl=0"
+#     response = requests.get(url)
+#     model_weights = BytesIO(response.content)
+#     model = torch.load(model_weights)
+#     return model
+
 @st.cache_resource
 def load_model_local():
     model_path = "classifier_weights/Transformer_Latest.pth"
     model_params = open(model_path[:-4] + ".txt").readlines()
-    model, (img_width, img_height), classes = load_model.load_model_weights(model_path=model_path,
+    model, (img_width, img_height), classes = load_model.load_model_weights_dropbox(
                                                                             model_params=model_params,
-                                                                            device=torch.device('cpu'))
+                                                                            device=device
+                                                                            #device=torch.device('cpu')
+                                                                            )
+    print("device",device)
     # model.load_state_dict(torch.load(model_path, map_location=))
     # model.eval() #necessary to disable any drop out units and further
     # torch.no_grad()
@@ -63,6 +68,9 @@ def load_model_local():
     resolution = img_width, img_height
 
     return model,resolution,classes
+
+
+
 
 def crop_image_obj_bbox(img_obj, bboxes_probs):
     img_obj_crop = None
@@ -78,49 +86,6 @@ def crop_image_obj_bbox(img_obj, bboxes_probs):
        img_obj_crop = img_obj.crop((x1, y1, x2, y2))
     return img_obj_crop, img_obj_with_rect_bbox
 
-@st.cache_resource
-def load_yolo_once():
-    import sys
-
-    #Author: M. Faik Karaaba (karaaba80), modified from Damon Gwin    
-    #bbox detector using Yolo
-
-
-
-    cfg = "YoloV3/configs/yolov3.cfg"
-    class_names = "YoloV3/configs/coco.names"
-    weights = "YoloV3/weights/yolov3.weights"
-
-    # no_grad disables autograd so our model runs faster
-    with torch.no_grad():
-        # print("YOLO Parsing config into model...")
-        yolo_model = parse_config(cfg)
-        if (yolo_model is None):
-            return
-
-        yolo_model = yolo_model.to(get_device())
-        yolo_model.eval()
-
-        print("yolo model is loaded...")
-
-        # Network input dim
-        if (yolo_model.net_block.width != yolo_model.net_block.height):
-            print("Error: Width and height must match in [net]")
-            return
-
-        # Letterboxing
-        letterbox = True #preserve the aspect ratio
-
-        print("Parsing class names...")
-        class_names = parse_names(class_names)
-        if (class_names is None):
-            return
-
-        print("Loading weights...")
-        load_weights(yolo_model, weights)
-
-    return yolo_model,class_names
-
 def predict_image_object(*, img_object, model, labels, res=(128,128), min_prob_threshold=0.75):
     # print("filepath", filepath, "\n")
     # print("predict_image_object is loaded")
@@ -130,8 +95,6 @@ def predict_image_object(*, img_object, model, labels, res=(128,128), min_prob_t
     import torchvision
     from PIL import Image
     from scipy.special import softmax
-
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     normalizer = torchvision.transforms.Normalize(mean=0.5, std=0.5)
 
@@ -171,37 +134,13 @@ def predict_image_object(*, img_object, model, labels, res=(128,128), min_prob_t
 
 # Load the model once
 model,resolution,classes = load_model_local()
-yolo_model,yolo_class_names = load_yolo_once()
+# yolo_model,yolo_class_names = load_yolo_once()
 
-def get_bboxes_yolo(yolo_model, image_obj, min_wh2image_ratio=0.2, min_obj_conf=0.9):
-    image = None
-    try:
-        image = cv2.cvtColor(np.array(image_obj), cv2.COLOR_RGB2BGR)
-        # image = numpy.array(img_obj.getdata()).reshape(img_obj.size[0], img_obj.size[1], 3)
-    except Exception as E:
-        print("exception", E)
 
-    network_dim = yolo_model.net_block.width
-    detections = inference_on_image(yolo_model, image, network_dim, obj_thresh=min_obj_conf, letterbox=True)
-    bboxess_probs = get_bboxes_xywh_with_class_filters(detections, yolo_class_names,
-                                                       class_filters=["car"])  # we want only "car" obj
 
-    im_h,im_w = image.shape[:2]
-    min_w = min_wh2image_ratio * im_w  # minimum w of the bbox
-    min_h = min_wh2image_ratio * im_h  # minimum h of the bbox
-
-    bboxess_probs = [((x, y, w, h), probability) for (x, y, w, h), probability in bboxess_probs if
-                     w >= min_w and h > min_h]
-
-    return bboxess_probs
-
-def detect_predict_and_show(img_obj, image_placeholder):
-    bboxes_probs = get_bboxes_yolo(yolo_model, img_obj)
-    img_obj_crop, img_obj_with_rect_bbox = crop_image_obj_bbox(img_obj, bboxes_probs)
-    # print("bboxes_probs", bboxes_probs)
-    np_value, label, conf = predict_image_object(img_object=img_obj_crop, model=model,
-                                                 labels=classes, res=resolution)
-    image_placeholder.image(img_obj_with_rect_bbox, caption=label, use_column_width=True)
+def predict_and_show(img_obj, image_placeholder):
+    np_value, label, conf = predict_image_object(img_object=img_obj, model=model, labels=classes, res=resolution)
+    image_placeholder.image(img_obj, caption=label, use_column_width=True)
 
 def main():
     # keys = ["No Car Selected", "Car "+i, "Car 2"]
@@ -222,7 +161,7 @@ def main():
     print("type of selected img:",type(selected_img_obj))
 
     if not selected_img_obj == None:
-       detect_predict_and_show(selected_img_obj, image_placeholder)
+       predict_and_show(selected_img_obj, image_placeholder)
 
     img_obj = None
     uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
@@ -241,7 +180,7 @@ def main():
     # if not img_obj == None:
     if selected_img_obj == None and not img_obj == None:
        # image_placeholder.image(img_obj, caption=label, use_column_width=True)
-       detect_predict_and_show(img_obj, image_placeholder)
+       predict_and_show(img_obj, image_placeholder)
 
 if __name__ == "__main__":
     main()

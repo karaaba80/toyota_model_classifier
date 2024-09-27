@@ -181,8 +181,9 @@ def main():
 
     # adp_pool,num_classes,classes,resolution = read_model_properties(model_params_path)
     model_params = open(model_path[:-4] + ".txt").readlines()
+    print("device",torch.device('cpu'))
     model, (img_width, img_height), classes = load_model.load_model_weights(model_path=model_path,
-                                                                            model_params=model_params)
+                                                                            model_params=model_params, device=torch.device('cuda'))
 
     # w,h = resolution
     # print("w,h", w, h)
@@ -190,9 +191,9 @@ def main():
 
     # model = CNN_Net.ResNet(num_classes=num_classes, adaptive_pool_output=adp_pool)
 
-    model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
-    model.eval() #necessary to disable any drop out units and further
-    torch.no_grad()
+    # model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+    # model.eval() #necessary to disable any drop out units and further
+    # torch.no_grad()
 
     # Initialize session state
     if 'previous_url' not in st.session_state:

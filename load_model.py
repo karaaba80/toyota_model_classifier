@@ -30,6 +30,51 @@ def load_model_parameters(model_params):
 
     return properties
 
+def load_model_weights_dropbox(*, model_params, device):
+    import requests
+    from io import BytesIO
+
+    """
+    ----------
+    Author: M. Faik Karaaba (karaaba80)
+    ----------
+    loading model weights, depending model params, it loads different architechtures like resnet or transformer VIT
+    ----------
+    """
+
+    properties = load_model_parameters(model_params)
+    try:
+        model_name = properties["model name"]
+        print("model name:", properties["model name"])
+    except:
+        print("model name:", "resnet18")
+        model_name = "resnet18"
+
+    num_classes = properties["number of classes"]
+    classes = properties["classes"]
+    w, h = list(map(int, properties["resolution"].split("x")))
+
+    if model_name.startswith("resnet"):
+       adp_pool = properties["adaptive pool output"]
+       print("resolution", str(w)+"x"+str(h))
+       mymodel = ResNet(num_classes=num_classes, adaptive_pool_output=adp_pool, model_name=model_name)
+
+    else:
+       num_classes = properties["number of classes"]
+       mymodel = TransformerVIT(num_classes=num_classes)
+
+    url = "https://dl.dropboxusercontent.com/scl/fi/281azcc5l4pujqbscdrjv/Transformer_Latest.pth?rlkey=it6dky430w8tp9p1sl626e7js&st=o47j2itl&dl=0"
+    response = requests.get(url)
+    model_weights = BytesIO(response.content)
+
+    mymodel.load_state_dict(torch.load(model_weights,map_location=device))
+    # torch.load(model_weights, map_location=device)
+
+    mymodel.eval()
+    torch.no_grad()
+
+    return mymodel,(w, h),classes
+
 def load_model_weights(*, model_path, model_params, device):
     """
     ----------
