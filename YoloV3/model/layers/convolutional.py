@@ -117,6 +117,7 @@ class ConvolutionalLayer(nn.Module):
             cur_pos += n_running_var
 
             # Shaping numbers into pytorch form
+            # print("bn.bias.data",bn.bias.data.size())
             bn_bias = bn_bias.view_as(bn.bias.data)
             bn_weights = bn_weights.view_as(bn.weight.data)
             bn_running_mean = bn_running_mean.view_as(bn.running_mean.data)
@@ -193,7 +194,7 @@ class ConvolutionalLayer(nn.Module):
         - Converts this layer into a human-readable string
         ----------
         """
-
+        print("to string",self.size, self.stride, self.in_channels, self.filters, self.batch_normalize, self.padding, self.activation)
         return \
             "CONV: size: %d  stride: %d  in_c: %d  out_c: %d  bn: %d  pad: %d  activ: %s" % \
             (self.size, self.stride, self.in_channels, self.filters, self.batch_normalize, self.padding, self.activation)

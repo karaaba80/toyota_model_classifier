@@ -4,6 +4,7 @@ import sys
 
 # sys.path.insert(0,"YoloV3/")
 from utilities.constants import *
+from utilities import constants
 from utilities.bboxes import bbox_iou_one_to_many, predictions_to_bboxes, bbox_iou, bbox_iou_many_to_many, bbox_ciou
 from utilities.detections import extract_detections_single_image
 
@@ -88,7 +89,7 @@ class YoloLayer(nn.Module):
         """
 
         device = x.device
-
+        print("INPUT_H_DIM",INPUT_H_DIM)
         grid_dim = x.shape[INPUT_H_DIM]
         grid_stride = input_dim // grid_dim
 
