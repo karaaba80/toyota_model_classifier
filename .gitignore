@@ -1,6 +1,2 @@
 # Ignore all .pyc files
-YoloV3/model/*.pyc
-YoloV3/utilities/__pycache__/augmentations.cpython-38.pyc
-YoloV3/model/layers/__pycache__/
---cached YoloV3/model/__pycache__/
-YoloV3/model/activations/__pycache__/mish.cpython-38.pyc
+*.pyc
