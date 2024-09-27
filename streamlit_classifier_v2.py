@@ -53,8 +53,9 @@ def create_thumbnails_and_get_selected_image(example_images):
 
 @st.cache_resource
 def load_model_local():
-    model_path = "classifier_weights/Transformer_Latest.pth"
-    model_params = open(model_path[:-4] + ".txt").readlines()
+    # model_path = "classifier_weights/Transformer_Latest.pth"
+    # model_params = open(model_path[:-4] + ".txt").readlines()
+    model_params = open("classifier_weights/transformer_model_params.txt").readlines()
     model, (img_width, img_height), classes = load_model.load_model_weights_dropbox(
                                                                             model_params=model_params,
                                                                             device=device

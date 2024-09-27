@@ -51,22 +51,25 @@ def create_thumbnails_and_get_selected_image(example_images):
     # print("create_thumbnails")
     return selected_img_obj,image_caption
 
-@st.cache_resource
-def load_model_from_dropbox():
-    url = "https://www.dropbox.com/scl/fi/281azcc5l4pujqbscdrjv/Transformer_Latest.pth?rlkey=it6dky430w8tp9p1sl626e7js&st=o47j2itl&dl=0"
-    response = requests.get(url)
-    model_weights = BytesIO(response.content)
-    model = torch.load(model_weights)
-    return model
+# @st.cache_resource
+# def load_model_from_dropbox():
+#     url = "https://www.dropbox.com/scl/fi/281azcc5l4pujqbscdrjv/Transformer_Latest.pth?rlkey=it6dky430w8tp9p1sl626e7js&st=o47j2itl&dl=0"
+#     response = requests.get(url)
+#     model_weights = BytesIO(response.content)
+#     model = torch.load(model_weights)
+#     return model
 
 @st.cache_resource
 def load_model_local():
-    model_path = "https://www.dropbox.com/scl/fi/281azcc5l4pujqbscdrjv/Transformer_Latest.pth?rlkey=it6dky430w8tp9p1sl626e7js&st=o47j2itl&dl=0"
-    model_path = "classifier_weights/Transformer_Latest.pth"
-    model_params = open(model_path[:-4] + ".txt").readlines()
-    model, (img_width, img_height), classes = load_model.load_model_weights(model_path=model_path,
+    # model_path = "classifier_weights/Transformer_Latest.pth"
+    # model_params = open(model_path[:-4] + ".txt").readlines()
+    model_params = open("classifier_weights/transformer_model_params.txt").readlines()
+    model, (img_width, img_height), classes = load_model.load_model_weights_dropbox(
                                                                             model_params=model_params,
-                                                                            device=device)
+                                                                            device=device
+                                                                            #device=torch.device('cpu')
+                                                                            )
+    print("device",device)
     # model.load_state_dict(torch.load(model_path, map_location=))
     # model.eval() #necessary to disable any drop out units and further
     # torch.no_grad()
@@ -89,6 +92,12 @@ def crop_image_obj_bbox(img_obj, bboxes_probs):
        img_obj_crop = img_obj.crop((x1, y1, x2, y2))
     return img_obj_crop, img_obj_with_rect_bbox
 
+def get_yolo_weights_dropbox():
+    weighs_url="https://dl.dropboxusercontent.com/scl/fi/gqi1t6qhmq7vqyycex6ey/yolov3.weights?rlkey=9dkzejctwnui2h5c3x840dl2u&st=ojrqd14a&dl=0"
+    response = requests.get(weighs_url)
+    model_weights = BytesIO(response.content)
+    return model_weights
+
 @st.cache_resource
 def load_yolo_once():
     import sys
@@ -100,8 +109,8 @@ def load_yolo_once():
 
     cfg = "YoloV3/configs/yolov3.cfg"
     class_names = "YoloV3/configs/coco.names"
-    weights = "YoloV3/weights/yolov3.weights"
-
+    # weights = "YoloV3/weights/yolov3.weights"
+    weights = get_yolo_weights_dropbox()
     # no_grad disables autograd so our model runs faster
     with torch.no_grad():
         # print("YOLO Parsing config into model...")

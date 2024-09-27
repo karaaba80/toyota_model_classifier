@@ -1,7 +1,60 @@
+import os
 import numpy as np
+import requests
+from io import BytesIO
+
+
+def load_weights(model, weights_file):
+    if isinstance(weights_file, (str, bytes, os.PathLike)):
+        # Open file path
+        with open(weights_file, "rb") as i_stream:
+            return _load_weights_from_stream(model, i_stream)
+    elif isinstance(weights_file, BytesIO):
+        # If it's a BytesIO object, we don't need to open it, just use it directly
+        return _load_weights_from_stream(model, weights_file)
+    else:
+        raise ValueError("weights_file must be a file path or a BytesIO object")
+
+def _load_weights_from_stream(model, i_stream):
+    # Header:
+    # 1) Major version - int32
+    # 2) Minor version - int32
+    # 3) Build number - int32
+    # 4) Num images seen - int64
+    version = np.frombuffer(i_stream.read(12), dtype=np.int32)
+    imgs_seen = np.frombuffer(i_stream.read(8), dtype=np.int64)[0]
+
+    # Converting version to string "major.minor.build"
+    version = ".".join([str(v) for v in version])
+
+    model.version = version
+    model.imgs_seen = int(imgs_seen)
+
+    # The rest are weights
+    weights = np.frombuffer(i_stream.read(), dtype=np.float32)
+
+    layers = model.get_layers()
+    cur_pos = 0
+
+    for layer in layers:
+        if layer.has_learnable_params:
+            if cur_pos == len(weights):
+                print("")
+                print("======= WARNING: Weights file has fewer weights than learnable parameters =======")
+                print("")
+                break
+
+            cur_pos = layer.load_weights(weights, cur_pos)
+
+    if cur_pos != len(weights):
+        print("")
+        print("======= WARNING: Weights file has more weights than learnable parameters =======")
+        print("")
+
+    return model
 
 # load_weights
-def load_weights(model, weights_file):
+def load_weights_org(model, weights_file):
     """
     ----------
     Author: Damon Gwinn (gwinndr)
